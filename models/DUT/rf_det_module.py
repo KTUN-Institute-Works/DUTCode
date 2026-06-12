@@ -197,11 +197,8 @@ class RFDetModule(nn.Module):
         im1w_score = topk_mask.to(torch.float) * im1w_score
 
         # apply gaussian kernel to im1w_score
-        psf = im1w_score.new_tensor(
-            get_gauss_filter_weight(self.GAUSSIAN_KSIZE, self.GAUSSIAN_SIGMA)[
-                None, None, :, :
-            ]
-        ).to(im1w_score.device)
+        gauss_weight = get_gauss_filter_weight(self.GAUSSIAN_KSIZE, self.GAUSSIAN_SIGMA)[None, None, :, :]
+        psf = torch.tensor(gauss_weight, dtype=im1w_score.dtype, device=im1w_score.device)
         im1w_score = F.conv2d(
             input=im1w_score.permute(0, 3, 1, 2),
             weight=psf,

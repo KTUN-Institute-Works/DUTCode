@@ -43,7 +43,7 @@ class KeypointDetction(nn.Module):
                 p = cv2.goodFeaturesToTrack(im, mask=None, **self.feature_params)
             p = p[:, 0, :] # N, 2
             im_topK[idx, 0, p[:, 1], p[:, 0]] = 1.
-        kpts = im_topK.nonzero()
+        kpts = im_topK.nonzero(as_tuple=False)
         kpts = [kpts[kpts[:, 0] == idx, :] for idx in range(batch)] # B, N, 4
         return im_topK, kpts
 
@@ -78,7 +78,7 @@ class RFDetection(nn.Module):
             im_rawsc, _, _ = self.det(im_data)
             im_score = self.det.process(im_rawsc)[0]
             im_topk = topk_map(im_score, self.TOPK).permute(0, 3, 1, 2) # B, 1, H, W
-            kpts = im_topk.nonzero()  # (B*topk, 4)
+            kpts = im_topk.nonzero(as_tuple=False)  # (B*topk, 4)
             kpts = [kpts[kpts[:, 0] == idx, :] for idx in range(im_data.shape[0])] # [[N, 4] for B]
             im_topk = im_topk.float()
         else:
@@ -89,7 +89,7 @@ class RFDetection(nn.Module):
                 im_rawsc, _, _ = self.det(im_data_clip)
                 im_score = self.det.process(im_rawsc)[0]
                 im_topk = topk_map(im_score, self.TOPK).permute(0, 3, 1, 2) # B, 1, H, W
-                kpts = im_topk.nonzero()  # (B*topk, 4)
+                kpts = im_topk.nonzero(as_tuple=False) # (B*topk, 4)
                 kpts = [kpts[kpts[:, 0] == idx, :] for idx in range(im_data_clip.shape[0])] # [[N, 4] for B]
                 im_topk = im_topk.float()
                 im_topK_.append(im_topk)
@@ -239,25 +239,17 @@ class DUT(nn.Module):
         return self.inference(x, x_RGB, repeat)
 
     def inference(self, x, x_RGB, repeat=50):
-        """
-        @param: x [B, C, T, H, W] Assume B is 1 here, a set of Gray images
-        @param: x_RGB [B, C, T, H, W] Assume B is 1 here, a set of RGB images
-        @param: repeat int repeat time for the smoother module
-
-        @return: smoothPath
-        """
-
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         x = x.permute(0, 2, 1, 3, 4).squeeze(0) # T, C, H, W
 
-        # keypoint extraction
         print("detect keypoints ....")
-        im_topk, kpts = self.keypointModule.forward(x) # T, 1, H, W; list([N, 4])
+        im_topk, kpts = self.keypointModule.forward(x) 
 
-        # This will slow down the code but save GPU memory
         x = x.cpu()
         torch.cuda.empty_cache()
 
         print("estimate motion ....")
+        # x_RGB tensors chain'ini device'a taşımak gerekebilir
         masked_flow = self.motionEstimation.forward(x, x_RGB, im_topk, kpts)
 
         x_RGB = x_RGB.cpu()
@@ -269,10 +261,11 @@ class DUT(nn.Module):
         del im_topk
 
         print("motion propagation ....")
-        origin_motion = [self.motionPro.inference(masked_flow[i:i+1, 0:1, :, :].cuda(), masked_flow[i:i+1, 1:2, :, :].cuda(), kpts[i]).cpu()
+        # .cuda() yerine .to(device) kullanın
+        origin_motion = [self.motionPro.inference(masked_flow[i:i+1, 0:1, :, :].to(device), masked_flow[i:i+1, 1:2, :, :].to(device), kpts[i]).cpu()
                         for i in range(len(kpts) - 1)]
 
-        origin_motion = torch.stack(origin_motion, 2).cuda() # B, 2, T, H, W
+        origin_motion = torch.stack(origin_motion, 2).to(device) 
         origin_motion = torch.cat([torch.zeros_like(origin_motion[:, :, 0:1, :, :]).to(origin_motion.device), origin_motion], 2)
 
         origin_motion = torch.cumsum(origin_motion, 2)
@@ -281,9 +274,9 @@ class DUT(nn.Module):
         max_value = torch.max(origin_motion) + 1e-5
         origin_motion = origin_motion / max_value
 
-        smoothKernel = self.smoother(origin_motion.cuda())
+        smoothKernel = self.smoother(origin_motion.to(device))
 
-        smoothPath = torch.cat(self.smoother.KernelSmooth(smoothKernel, origin_motion.cuda(), repeat), 1) # B, 2, T, H, W
+        smoothPath = torch.cat(self.smoother.KernelSmooth(smoothKernel, origin_motion.to(device), repeat), 1) 
         smoothPath = smoothPath * max_value + min_value
         origin_motion = origin_motion * max_value + min_value
 

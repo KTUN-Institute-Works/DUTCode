@@ -16,6 +16,8 @@ import argparse
 
 torch.set_grad_enabled(False)
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Control for stabilization model')
     parser.add_argument('--SmootherPath', help='the path to pretrained smoother model, blank for jacobi solver', default='')
@@ -54,7 +56,7 @@ def generateStable(model, base_path, outPath, outPrefix, max_length, args):
     x_RGB = torch.from_numpy(x_RGB).unsqueeze(0)
 
     with torch.no_grad():
-        origin_motion, smoothPath = model.inference(x.cuda(), x_RGB.cuda(), repeat=args.Repeat)
+        origin_motion, smoothPath = model.inference(x.float().to(device), x_RGB.float().to(device), repeat=args.Repeat)
 
     origin_motion = origin_motion.cpu().numpy()
     smoothPath = smoothPath.cpu().numpy()
@@ -71,7 +73,7 @@ def generateStable(model, base_path, outPath, outPrefix, max_length, args):
     frame_height = cfg.MODEL.HEIGHT
     
     print("generate stabilized video...")
-    fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(os.path.join(outPath, outPrefix + 'DUT_stable.mp4'), fourcc, frame_rate, (frame_width, frame_height))
 
     new_x_motion_meshes = sx_paths - x_paths

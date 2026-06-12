@@ -33,22 +33,25 @@ after_ch = max(1, -min(args.indices) + 1)
 
 model = stabNet()
 r_model = torch.load(args.modelPath)
-model.load_state_dict(r_model)
+model.load_state_dict(r_model, strict=False)
 model.cuda()
 model.eval()
 
 def cvt_img2train(img, crop_rate = 1):
-    img = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2GRAY))
+    img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+    
+    resample_method = getattr(Image, 'Resampling', Image).BILINEAR 
+    
     if (crop_rate != 1):
         h = int(height / crop_rate)
         dh = int((h - height) / 2)
         w = int(width / crop_rate)
         dw = int((w - width) / 2)
 
-        img = img.resize((w, h), Image.BILINEAR)
+        img = img.resize((w, h), resample_method)
         img = img.crop((dw, dh, dw + width, dh + height))
     else:
-        img = img.resize((width, height), Image.BILINEAR)
+        img = img.resize((width, height), resample_method)
     img = np.array(img)
     img = img * (1. / 255) - 0.5
     img = img.reshape((1, height, width, 1))
@@ -102,7 +105,7 @@ cnt += 1
 
 for i in range(before_ch):
     before_frames.append(cvt_img2train(frame, crop_rate))
-    before_masks.append(np.zeros([1, height, width, 1], dtype=np.float))
+    before_masks.append(np.zeros([1, height, width, 1], dtype=float))
     temp = before_frames[i]
     temp = ((np.reshape(temp, (height, width)) + 0.5) * 255).astype(np.uint8)
 
@@ -126,8 +129,8 @@ dw = int(width * 0.8 / 2)
 all_black = np.zeros([height, width], dtype=np.int64)
 frames = []
 
-black_mask = np.zeros([dh, width], dtype=np.float)
-temp_mask = np.concatenate([np.zeros([height - 2 * dh, dw], dtype=np.float), np.ones([height - 2 * dh, width - 2 * dw], dtype=np.float), np.zeros([height - 2 * dh, dw], dtype=np.float)], axis=1)
+black_mask = np.zeros([dh, width], dtype=float)
+temp_mask = np.concatenate([np.zeros([height - 2 * dh, dw], dtype=float), np.ones([height - 2 * dh, width - 2 * dw], dtype=float), np.zeros([height - 2 * dh, dw], dtype=float)], axis=1)
 black_mask = np.reshape(np.concatenate([black_mask, temp_mask, black_mask], axis=0),[1, height, width, 1]) 
 
 try:
@@ -231,7 +234,7 @@ finally:
                             max_s = s
                             ans = [i, j, hh, ww]
     videoWriter = cv2.VideoWriter(os.path.join(production_dir, 'StabNet_stable.mp4'), 
-        cv2.VideoWriter_fourcc(*'MP4V'), 25, (ans[3] - ans[1] + 1, ans[2] - ans[0] + 1))
+        cv2.VideoWriter_fourcc(*'mp4v'), 25, (ans[3] - ans[1] + 1, ans[2] - ans[0] + 1))
     for frame in frames:
         frame_ = frame[ans[0]:ans[2] + 1, ans[1]:ans[3] + 1, :]
         videoWriter.write(frame_)

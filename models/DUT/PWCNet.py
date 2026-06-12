@@ -22,7 +22,8 @@ except:
 ##########################################################
 
 # requires at least pytorch version 1.3.0
-assert(int(str('').join(torch.__version__.split('.')[0:2])) >= 13)
+import packaging.version
+assert(packaging.version.parse(torch.__version__) >= packaging.version.parse("1.3.0"))
 
 # torch.set_grad_enabled(False) # make sure to not compute gradients for computational performance
 
@@ -55,8 +56,8 @@ def backwarp(tenInput, tenFlow):
         tenVertical = torch.linspace(-1.0, 1.0, tenFlow.shape[2]).view(
             1, 1, tenFlow.shape[2], 1).expand(tenFlow.shape[0], -1, -1, tenFlow.shape[3])
 
-        backwarp_tenGrid[str(tenFlow.size())] = torch.cat(
-            [tenHorizontal, tenVertical], 1).cuda()
+        device = tenFlow.device  # Akışı tetikleyen cihazı (CUDA) otomatik al
+        backwarp_tenGrid[str(tenFlow.size())] = torch.cat([tenHorizontal, tenVertical], 1).to(device)
     # end
 
     if str(tenFlow.size()) not in backwarp_tenPartial:

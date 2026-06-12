@@ -26,7 +26,8 @@ python ./scripts/DUTStabilizer.py \
     --PWCNetPath=$PWCNetPath \
     --MotionPro=$MotionProPath \
     --InputBasePath=$InputPath \
-    --OutputBasePath=$OutputBasePath 
+    --OutputBasePath=$OutputBasePath \
+    --MaxLength=200
 
 # Run the DIFRINT model
 echo " Stabiling using the DIFRINT model "
@@ -46,4 +47,3 @@ python ./scripts/StabNetStabilizer.py \
     --modelPath=$StabNetPath \
     --OutputBasePath=$OutputBasePath \
     --InputBasePath=$InputPath 
-

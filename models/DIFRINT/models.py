@@ -80,7 +80,8 @@ class UNet1(nn.Module):
         self.dec4 = Decoder(16, 3, stride=1, tanh=True)
 
     def forward(self, x1, x2):
-        s0 = self.enc0(torch.cat([x1, x2], 1).cuda())
+        device = x1.device
+        s0 = self.enc0(torch.cat([x1, x2], 1).to(device))
         s1 = self.enc1(s0)
         s2 = self.enc2(s1)
         s3 = self.enc3(s2)
@@ -88,11 +89,11 @@ class UNet1(nn.Module):
         s4 = self.dec0(s3)
         # up-scaling + concat
         s4 = F.interpolate(s4, scale_factor=2, mode='nearest')
-        s5 = self.dec1(torch.cat([s4, s2], 1).cuda())
+        s5 = self.dec1(torch.cat([s4, s2], 1).to(device))
         s5 = F.interpolate(s5, scale_factor=2, mode='nearest')
-        s6 = self.dec2(torch.cat([s5, s1], 1).cuda())
+        s6 = self.dec2(torch.cat([s5, s1], 1).to(device))
         s6 = F.interpolate(s6, scale_factor=2, mode='nearest')
-        s7 = self.dec3(torch.cat([s6, s0], 1).cuda())
+        s7 = self.dec3(torch.cat([s6, s0], 1).to(device))
 
         out = self.dec4(s7)
         return out
@@ -159,7 +160,7 @@ class ResNet(nn.Module):
         )
 
     def forward(self, x1, x2):
-        return self.seq(torch.cat([x1, x2], 1).cuda())
+        return self.seq(torch.cat([x1, x2], 1).to(x1.device))
 
 
 #############################################################################################################
@@ -235,7 +236,8 @@ class UNet2(nn.Module):
         self.dec4 = Decoder(32, 3, stride=1, tanh=True)
 
     def forward(self, w1, w2, flo1, flo2, fr1, fr2):
-        s0 = self.enc0(torch.cat([w1, w2, flo1, flo1, fr1, fr2], 1).cuda())
+        device = w1.device
+        s0 = self.enc0(torch.cat([w1, w2, flo1, flo1, fr1, fr2], 1).to(device)).cuda()
         s1 = self.enc1(s0)
         s2 = self.enc2(s1)
         s3 = self.enc3(s2)
@@ -243,14 +245,13 @@ class UNet2(nn.Module):
         s4 = self.dec0(s3)
         # up-scaling + concat
         s4 = F.interpolate(s4, scale_factor=2, mode='nearest')
-        s5 = self.dec1(torch.cat([s4, s2], 1).cuda())
+        s5 = self.dec1(torch.cat([s4, s2], 1).to(device))
         s5 = F.interpolate(s5, scale_factor=2, mode='nearest')
-        s6 = self.dec2(torch.cat([s5, s1], 1).cuda())
+        s6 = self.dec2(torch.cat([s5, s1], 1).to(device))
         s6 = F.interpolate(s6, scale_factor=2, mode='nearest')
-        s7 = self.dec3(torch.cat([s6, s0], 1).cuda())
+        s7 = self.dec3(torch.cat([s6, s0], 1).to(device))
 
-        out = self.dec4(s7)
-        return out
+        return self.dec4(s7)
 
 
 class DIFNet2(nn.Module):
@@ -572,9 +573,10 @@ class DIFNet3(nn.Module):
             # end
 
             def forward(self, tensorInput, tensorFlow, scale=1.0):
+                device = tensorFlow.device
                 if hasattr(self, 'tensorPartial') == False or self.tensorPartial.size(0) != tensorFlow.size(0) or self.tensorPartial.size(2) != tensorFlow.size(2) or self.tensorPartial.size(3) != tensorFlow.size(3):
                     self.tensorPartial = torch.FloatTensor().resize_(tensorFlow.size(
-                        0), 1, tensorFlow.size(2), tensorFlow.size(3)).fill_(1.0).cuda()
+                        0), 1, tensorFlow.size(2), tensorFlow.size(3)).fill_(1.0).to(device)
                 # end
 
                 if hasattr(self, 'tensorGrid') == False or self.tensorGrid.size(0) != tensorFlow.size(0) or self.tensorGrid.size(2) != tensorFlow.size(2) or self.tensorGrid.size(3) != tensorFlow.size(3):
@@ -584,7 +586,7 @@ class DIFNet3(nn.Module):
                         1, 1, tensorFlow.size(2), 1).expand(tensorFlow.size(0), -1, -1, tensorFlow.size(3))
 
                     self.tensorGrid = torch.cat(
-                        [tensorHorizontal, tensorVertical], 1).cuda()
+                        [tensorHorizontal, tensorVertical], 1).to(device)
                 # end
                 # pdb.set_trace()
                 tensorInput = torch.cat([tensorInput, self.tensorPartial], 1)
