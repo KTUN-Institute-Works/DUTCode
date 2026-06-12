@@ -62,8 +62,8 @@ class Smoother(nn.Module):
         max_v = np.max(path, keepdims=True) + 1e-5
         path = path / max_v
         path = np.transpose(np.expand_dims(path, 0), (0, 4, 3, 1, 2))
-        path_t = torch.from_numpy(path.astype(np.float32)).cuda()
-
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        path_t = torch.from_numpy(path.astype(np.float32)).to(device)
         # get smooth kernel
         kernel_t = self.forward(path_t)
 

@@ -43,6 +43,8 @@ if torch.cuda.is_available() and not opt.cuda:
 # Networks
 DIFNet = DIFNet2()
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # Place Network in cuda memory
 if opt.cuda:
     DIFNet.cuda()
@@ -90,16 +92,18 @@ for num_iter in range(opt.n_iter):
                 skip = opt.skip
 
 
-            fr_g1 = torch.cuda.FloatTensor(np.array(Image.open(opt.temp_file + '%d.jpg' % (
-                int(f[:-4])-skip)).resize((opt.desiredWidth, opt.desiredHeight))).transpose(2, 0, 1).astype(np.float32)[None, :, :, :] / 255.0)
+            img_np = np.array(Image.open(opt.temp_file + '%d.jpg' % (int(f[:-4])-skip)).resize((opt.desiredWidth, opt.desiredHeight))).transpose(2, 0, 1).astype(np.float32)[None, :, :, :] / 255.0
+            fr_g1 = torch.from_numpy(img_np).to(device)
 
-            fr_g3 = torch.cuda.FloatTensor(np.array(Image.open(
-                src + '%d.jpg' % (int(f[:-4])+skip)).resize((opt.desiredWidth, opt.desiredHeight))).transpose(2, 0, 1).astype(np.float32)[None, :, :, :] / 255.0)
+            img_np3 = np.array(Image.open(src + '%d.jpg' % (int(f[:-4])+skip)).resize((opt.desiredWidth, opt.desiredHeight))).transpose(2, 0, 1).astype(np.float32)[None, :, :, :] / 255.0
+            fr_g3 = torch.from_numpy(img_np3).to(device)
 
+            img_npo2 = np.array(Image.open(opt.InputBasePath + f).resize((opt.desiredWidth, opt.desiredHeight))).transpose(2, 0, 1).astype(np.float32)[None, :, :, :] / 255.0
+            fr_o2 = torch.from_numpy(img_npo2).to(device)
 
-            fr_o2 = torch.cuda.FloatTensor(np.array(Image.open(
-                opt.InputBasePath + f).resize((opt.desiredWidth, opt.desiredHeight))).transpose(2, 0, 1).astype(np.float32)[None, :, :, :] / 255.0)
-
+            fr_g1 = fr_g1.contiguous()
+            fr_g3 = fr_g3.contiguous()
+            fr_o2 = fr_o2.contiguous()
             with torch.no_grad():
                 fhat, I_int = DIFNet(fr_g1, fr_g3, fr_o2,
                                      fr_g3, fr_g1, 0.5)  # Notice 0.5
@@ -122,12 +126,21 @@ frame_width = opt.desiredWidth
 frame_height = opt.desiredHeight
 
 print("generate stabilized video...")
-fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-out = cv2.VideoWriter(opt.OutputBasePath + '/DIFRINT_stable.mp4', fourcc, frame_rate, (frame_width, frame_height))
+fourcc = cv2.VideoWriter_fourcc(*'mp4v') # Küçük harfe çevirdik (OpenCV tag uyarısını engellemek için)
+out = cv2.VideoWriter(os.path.join(opt.OutputBasePath, 'DIFRINT_stable.mp4'), fourcc, frame_rate, (frame_width, frame_height))
 
 for f in frameList:
     if f.endswith('.jpg'):
-        img = cv2.imread(os.path.join(opt.temp_file, f))
+        # OpenCV ile okumak yerine PIL ile temiz RGB okuyup numpy array'e çeviriyoruz
+        pil_img = Image.open(os.path.join(opt.temp_file, f))
+        # OpenCV BGR beklediği için kanalları RGB -> BGR yapıyoruz
+        img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+        
+        # Olası bir boyut uyuşmazlığını engellemek için yerinde garantiye alıyoruz
+        if img.shape[1] != frame_width or img.shape[0] != frame_height:
+            img = cv2.resize(img, (frame_width, frame_height))
+            
         out.write(img)
 
 out.release()
+print("\nVideo başarıyla kaydedildi!")

@@ -50,30 +50,35 @@ def transformer(U, theta, name='SpatialTransformer', **kwargs):
 
     """
     def _repeat(x, n_repeats):
-        rep = torch._cast_Long(torch.transpose(torch.ones([n_repeats, ]).unsqueeze(1), 1, 0))
-        x = torch.matmul(x.view(-1, 1), rep)
-        return x.view(-1)
-
+        device = x.device
+        # 1. rep tensörünü matris çarpımı için float olarak başlatıyoruz
+        rep = torch.ones([n_repeats, ], device=device).unsqueeze(1).transpose(1, 0).float()
+        
+        # 2. x tensörünü de çarpım esnasında .float() yapıyoruz ki CUDA'da addmm çalışabilsin
+        x_float = x.view(-1, 1).float()
+        
+        # 3. Çarpımı gerçekleştiriyoruz
+        out = torch.matmul(x_float, rep)
+        
+        # 4. Çıktıyı tekrar indeksleme işlemlerinde kullanılabilmesi için orijinal tipi olan .long() formatına döndürüyoruz
+        return out.view(-1).long()
+    
     def _interpolate(im, x, y, out_size):
+        device = im.device
         num_batch, height, width, channels = im.size() # to be sure the input dims is NHWC
-        x = torch._cast_Float(x).cuda()
-        y = torch._cast_Float(y).cuda()
-        height_f = torch._cast_Float(torch.Tensor([height]))[0].cuda()
-        width_f = torch._cast_Float(torch.Tensor([width]))[0].cuda()
+        x = x.float().to(device)
+        y = y.float().to(device)
+        height_f = torch.tensor([height], dtype=torch.float, device=device)[0]
+        width_f = torch.tensor([width], dtype=torch.float, device=device)[0]
         out_height = out_size[0]
         out_width = out_size[1]
-        zero = torch.zeros([], dtype=torch.int32).cuda()
-        max_y = torch._cast_Long(torch.Tensor([height - 1]))[0].cuda()
-        max_x = torch._cast_Long(torch.Tensor([width - 1]))[0].cuda()
+        zero = torch.zeros([], dtype=torch.int32, device=device)
+        max_y = torch.tensor([height - 1], dtype=torch.long, device=device)[0]
+        max_x = torch.tensor([width - 1], dtype=torch.long, device=device)[0]
 
-        # scale indices from [-1, 1] to [0, width/height]
-        x = (x + 1.0) * width_f / 2.0
-        y = (y + 1.0) * height_f / 2.0
-
-        # do sampling
-        x0 = torch._cast_Long(torch.floor(x)).cuda()
+        x0 = torch.floor(x).long().to(device)
         x1 = x0 + 1
-        y0 = torch._cast_Long(torch.floor(y)).cuda()
+        y0 = torch.floor(y).long().to(device)
         y1 = y0 + 1
 
         x0 = torch.clamp(x0, zero, max_x)
@@ -82,7 +87,7 @@ def transformer(U, theta, name='SpatialTransformer', **kwargs):
         y1 = torch.clamp(y1, zero, max_y)
         dim2 = width
         dim1 = width * height
-        base = _repeat(torch.arange(num_batch) * dim1, out_height * out_width).cuda()
+        base = _repeat(torch.arange(num_batch, device=device) * dim1, out_height * out_width).to(device)
         base_y0 = base + y0 * dim2
         base_y1 = base + y1 * dim2
         idx_a = base_y0 + x0
@@ -90,20 +95,16 @@ def transformer(U, theta, name='SpatialTransformer', **kwargs):
         idx_c = base_y0 + x1
         idx_d = base_y1 + x1
 
-        # use indices to look up pixels in the flate images
-        # and restore channels dim
-        im_flat = im.contiguous().view(-1, channels)
-        im_flat = torch._cast_Float(im_flat)
-        Ia = im_flat[idx_a] # as in tf, the default dim is row first
+        im_flat = im.contiguous().view(-1, channels).float()
+        Ia = im_flat[idx_a] 
         Ib = im_flat[idx_b]
         Ic = im_flat[idx_c]
         Id = im_flat[idx_d]
 
-        # calculate interpolated values
-        x0_f = torch._cast_Float(x0).cuda()
-        x1_f = torch._cast_Float(x1).cuda()
-        y0_f = torch._cast_Float(y0).cuda()
-        y1_f = torch._cast_Float(y1).cuda()
+        x0_f = x0.float().to(device)
+        x1_f = x1.float().to(device)
+        y0_f = y0.float().to(device)
+        y1_f = y1.float().to(device)
         wa = ((x1_f - x) * (y1_f - y)).unsqueeze(1)
         wb = ((x1_f - x) * (y - y0_f)).unsqueeze(1)
         wc = ((x - x0_f) * (y1_f - y)).unsqueeze(1)
@@ -345,7 +346,9 @@ class stabNet(nn.Module):
         return torch.cat(out, 0)
 
     def forward(self, x_tensor):
+        device = x_tensor.device
         x_batch_size = x_tensor.size()[0]
+        x_tensor = x_tensor.to(device)
         x = x_tensor[:, 12:13, :, :]
 
         # summary 1, dismiss now
